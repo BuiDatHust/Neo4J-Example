@@ -8,6 +8,7 @@ export class OrganizationController {
   @Post('/')
   public async create(@Request() req) {
     const result = await this.organizationService.createOrganization(req.body);
+    console.log(result);
     return result;
   }
 }

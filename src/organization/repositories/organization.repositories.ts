@@ -1,20 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import {
-  Neo4jModelService,
-  Neo4jNodeModelService,
+  Neo4jNodeRelationshipModelService,
   Neo4jService,
-  int,
 } from 'src/neo4j-database';
-import { CreateOrganizationDto } from '../dto/create-organization.dto';
 import {
   ORGANIZATION_LABEL,
   ROOT_ORGANIZATION_LABEL,
 } from '../constant/organization.constant';
 import { Organization } from '../entity/organization.entity';
+import { CreateOrganizationDto } from '../dto/create-organization.dto';
 
 @Injectable()
-export class OrganizationRepository extends Neo4jModelService<Organization> {
-  constructor(protected readonly neo4jNodeService: Neo4jService) {
+export class OrganizationRepository extends Neo4jNodeRelationshipModelService<Organization> {
+  constructor(
+    protected readonly neo4jNodeService: Neo4jService,
+    protected readonly neo4jService: Neo4jService,
+  ) {
     super();
   }
 
@@ -22,20 +23,31 @@ export class OrganizationRepository extends Neo4jModelService<Organization> {
   logger = undefined;
   timestamp = 'created_at';
 
-  fromNeo4j(model: Record<string, any>): Organization {
-    return super.fromNeo4j({
-      ...model,
-      age: model.age.toNumber(),
-    });
+  async findByTaxCode(
+    tax_code: string,
+    stringoptions?: {
+      skip?: number;
+      limit?: number;
+      orderBy?: string;
+      descending?: boolean;
+    },
+  ) {
+    const properties = { tax_code } as Partial<Organization>;
+    const queryCypher = await super.findNodeBy(properties, stringoptions);
+    return queryCypher.run();
   }
 
-  toNeo4j(cat: Record<string, any>): Record<string, any> {
-    const result: Record<string, any> = { ...cat };
-
-    if (!isNaN(result.age)) {
-      result.age = int(result.age);
-    }
-
-    return super.toNeo4j(result);
+  async createNodeOrg(properties, lbl: string) {
+    this.label = lbl;
+    const queryCypher = await super.createNode(properties);
+    return queryCypher.run();
   }
+
+  // async deleteNodeWithRelationship() {}
+
+  // async createRelationOrgWithOrg() {}
+
+  // async updateRelationOrgWithOrg() {}
+
+  // async deleteRelationOrgWithOrg() {}
 }

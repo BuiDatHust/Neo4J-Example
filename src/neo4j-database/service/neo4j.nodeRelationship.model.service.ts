@@ -13,8 +13,71 @@ import { Query } from '../interface';
 /**
  * Helper class to generate Node model service using Neo4j
  */
-export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
-  create(
+export abstract class Neo4jNodeRelationshipModelService<
+  T,
+> extends Neo4jModelService<T> {
+  createRelationship<F, R>(
+    props: Partial<T>,
+    fromProps: Partial<F>,
+    toProps: Partial<R>,
+    fromService: Neo4jNodeRelationshipModelService<F>,
+    toService: Neo4jNodeRelationshipModelService<R>,
+    options: { merge?: boolean; returns?: boolean } = {
+      merge: false,
+      returns: true,
+    },
+  ) {
+    const p = this.toNeo4j(props);
+    const fp = fromService.toNeo4j(fromProps);
+    const tp = toService.toNeo4j(toProps);
+
+    const MATCH = `MATCH ${NODE('f', fromService.label)}, ${NODE(
+      't',
+      toService.label,
+    )}`;
+
+    const WHERE_CLAUSES = [
+      ...Object.keys(fp).map((k) => `f.\`${k}\` = $fp.\`${k}\``),
+      ...Object.keys(tp).map((k) => `t.\`${k}\` = $tp.\`${k}\``),
+    ].join(' AND ');
+
+    const WHERE = `${WHERE_CLAUSES ? ` WHERE ${WHERE_CLAUSES}` : ''}`;
+
+    const CREATE = `${options?.merge ? ' MERGE' : ' CREATE'} (f)-[r:\`${
+      this.label
+    }\`]->(t)`;
+
+    const SET = `${p || this.timestamp ? ` SET` : ''}${
+      p ? ` r=$p` : ''
+    }${TIMESTAMP('r', this.timestamp, p ? ', ' : ' ')}`;
+
+    const RETURN = `${
+      options.returns
+        ? ` RETURN properties (f) AS from, properties(r) AS created, properties(t) AS to`
+        : ''
+    }`;
+
+    const query = {
+      cypher: `${MATCH}${WHERE}${CREATE}${SET}${RETURN}`,
+      parameters: { p, fp, tp },
+    };
+    return {
+      query,
+      runTx: (tx: Transaction) => tx.run(query.cypher, query.parameters),
+      run: async () => {
+        const res = await this._run(query, { write: true });
+        return res.map((r) => {
+          return [
+            fromService.fromNeo4j(r.from),
+            this.fromNeo4j(r.merged),
+            toService.fromNeo4j(r.to),
+          ] as [F, T, R];
+        });
+      },
+    };
+  }
+
+  createNode(
     properties: Partial<T>,
     options: { returns?: boolean } = {
       returns: true,
@@ -45,7 +108,7 @@ export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
     };
   }
 
-  merge(
+  mergeNode(
     properties: Partial<T>,
     options: { returns?: boolean } = {
       returns: true,
@@ -74,7 +137,7 @@ export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
     };
   }
 
-  update(
+  updateNode(
     match: Partial<T>,
     update: Partial<T>,
     options: { mutate?: boolean; returns?: boolean } = {
@@ -106,7 +169,7 @@ export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
     };
   }
 
-  delete(
+  deleteNode(
     properties: Partial<T>,
     options: { returns?: boolean } = {
       returns: true,
@@ -138,7 +201,7 @@ export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
     };
   }
 
-  findAll(
+  findAllNode(
     options: {
       skip?: number;
       limit?: number;
@@ -173,7 +236,7 @@ export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
     };
   }
 
-  findBy(
+  findNodeBy(
     properties: Partial<T>,
     options: {
       skip?: number;
@@ -211,7 +274,7 @@ export abstract class Neo4jNodeModelService<T> extends Neo4jModelService<T> {
     };
   }
 
-  searchBy(
+  searchNodeBy(
     prop: keyof T,
     search: string,
     options: {
